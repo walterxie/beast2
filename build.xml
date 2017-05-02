@@ -233,7 +233,7 @@
 
             <batchtest fork="yes" todir="${report}">
                 <fileset dir="${src}">
-                    <include name="test/beast/app/beauti/**/*Test.java"/>
+                    <include name="test/beast/app/beauti/**/*Test2.java"/>
                 </fileset>
             </batchtest>
         </junit>
