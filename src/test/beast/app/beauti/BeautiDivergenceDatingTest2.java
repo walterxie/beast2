@@ -29,7 +29,7 @@ public class BeautiDivergenceDatingTest2 extends BeautiBase2 {
         // 0. Load primate-mtDNA.nex
         warning("// 0. Load primate-mtDNA.nex");
         importAlignment("examples/nexus", new File("primate-mtDNA.nex"));
-        System.getProperty("mrj.version");
+
         beautiFrame.menuItemWithPath("Mode", "Automatic set fix mean substitution rate flag").click();
 
         JTabbedPaneFixture f = beautiFrame.tabbedPane();
