@@ -83,7 +83,7 @@
             <include name="org/**/**" />
             <!-- compile JUnit test classes -->
             <!--<include name="test/beast/**" />-->
-            <include name="test/beast/app/beauti/**/*Test2.java"/>
+            <include name="test/beast/app/beauti/**/*2.java"/>
         </javac>
 
         <!-- compile the launcher apps against Java 6-->
