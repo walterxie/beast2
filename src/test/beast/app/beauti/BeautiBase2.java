@@ -324,8 +324,7 @@ public class BeautiBase2 extends AssertJSwingJUnitTestCase {
 	void importAlignment(String dir, File ... files) {
 		if (!Utils.isMac()) {
 			beautiFrame.menuItemWithPath("File", "Import Alignment").click();
-//			JFileChooserFixture fileChooser = findFileChooser().using(robot());
-			JFileChooserFixture fileChooser = new JFileChooserFixture(robot());
+			JFileChooserFixture fileChooser = findFileChooser().using(robot());
 			fileChooser.setCurrentDirectory(new File(dir));
 			fileChooser.selectFiles(files).approve();
 			// close down any popup message
