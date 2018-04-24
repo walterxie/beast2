@@ -1,7 +1,11 @@
 BEAST 2
 =======
 
+Original
 [![Build Status](https://travis-ci.org/CompEvol/beast2.svg?branch=master)](https://travis-ci.org/CompEvol/beast2)
+
+My fork
+[![Build Status](https://travis-ci.org/walterxie/beast2.svg?branch=master)](https://travis-ci.org/walterxie/beast2)
 
 BEAST is a cross-platform program for Bayesian inference using MCMC of
 molecular sequences. It is entirely orientated towards rooted,
