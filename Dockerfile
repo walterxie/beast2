@@ -45,4 +45,7 @@ WORKDIR /root/beast2
 
 ADD . ./
 
+# test java
+RUN java -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap -XshowSettings:vm -version
+
 CMD vncserver $DISPLAY -geometry 1920x1080; ant travis
