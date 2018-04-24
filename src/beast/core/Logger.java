@@ -96,12 +96,12 @@ public class Logger extends BEASTObject {
     /**
      * offset for the sample number, which is non-zero when a chain is resumed *
      */
-    static int sampleOffset = -1;
+    static long sampleOffset = -1;
 
     /**
      * number of samples between logs *
      */
-    int every = 1;
+    long every = 1;
 
     /**
      * stream to log to
@@ -112,7 +112,7 @@ public class Logger extends BEASTObject {
      * keep track of time taken between logs to estimate speed *
      */
     long startLogTime = -5;
-    int startSample;
+    long startSample;
 
     @Override
     public void initAndValidate() {
@@ -273,7 +273,7 @@ public class Logger extends BEASTObject {
     } // init
 
     /** remove indicators of partition context from header of a log file **/
-    private String sanitiseHeader(String header) {
+    public String sanitiseHeader(String header) {
     	// collect partitions
     	String partitionPrefix = null, clockPrefix = null, sitePrefix = null, treePrefix = null;
     	for (int i = 0; i < header.length(); i++) {
@@ -364,7 +364,7 @@ public class Logger extends BEASTObject {
                 fileNameInput.setValue(fileName, this);
             }
             if (System.getProperty("file.name.prefix") != null) {
-                fileName = System.getProperty("file.name.prefix") + "/" + fileName;
+                fileName = System.getProperty("file.name.prefix") + fileName;
             }
             switch (FILE_MODE) {
                 case only_new:// only open file if the file does not already exists
@@ -378,9 +378,13 @@ public class Logger extends BEASTObject {
                         }
                         // Check with user what to do next
                         Log.info.println("Trying to write file " + fileName + " but the file already exists (perhaps use the -overwrite flag?).");
+                        if (System.getProperty("beast.useWindow") != null) {
+                        	// we are using the BEAST console, so no input is possible
+                        	throw new IllegalArgumentException();
+						}
                         Log.info.println("Overwrite (Y/N)?:");
                         Log.info.flush();
-                        final BufferedReader stdin = new BufferedReader(new InputStreamReader(System.in));
+                        final BufferedReader stdin = new BufferedReader(new InputStreamReader(System.in));	                        
                         final String msg = stdin.readLine();
                         if (!msg.toLowerCase().equals("y")) {
                         	Log.info.println("Exiting now.");
@@ -414,7 +418,7 @@ public class Logger extends BEASTObject {
                             }
                             fin.close();
                             assert str != null;
-                            final int sampleOffset = Integer.parseInt(str.split("\\s")[0]);
+                            final long sampleOffset = Long.parseLong(str.split("\\s")[0]);
                             if (Logger.sampleOffset > 0 && sampleOffset != Logger.sampleOffset) {
                                 throw new RuntimeException("Error 400: Cannot resume: log files do not end in same sample number");
                             }
@@ -461,7 +465,7 @@ public class Logger extends BEASTObject {
                                  throw new RuntimeException("Error 402: empty tree log file " + fileName + "? (check if there is a back up file " + fileName + ".bu)");
                             }
                             final String str = strLast.split("\\s+")[1];
-                            final int sampleOffset = Integer.parseInt(str.substring(6));
+                            final long sampleOffset = Long.parseLong(str.substring(6));
                             if (Logger.sampleOffset > 0 && sampleOffset != Logger.sampleOffset) {
                                 //final boolean ok1 = treeFileBackup.renameTo(new File(fileName));        assert ok1;
                                 Files.move(treeFileBackup.toPath(), new File(fileName).toPath(), StandardCopyOption.ATOMIC_MOVE);
@@ -491,7 +495,7 @@ public class Logger extends BEASTObject {
      * *
      * * @param sample
      */
-    public void log(int sampleNr) {
+    public void log(long sampleNr) {
         if ((sampleNr < 0) || (sampleNr % every > 0)) {
             return;
         }
@@ -619,7 +623,7 @@ public class Logger extends BEASTObject {
         return m_out;
     }
 
-    public static int getSampleOffset() {
+    public static long getSampleOffset() {
         return sampleOffset < 0 ? 0 : sampleOffset;
     }
 

@@ -292,7 +292,7 @@ public class TreeUtils {
      *                  and the tree still be regarded as ultrametric
      * @return true only if all tips have height 0.0
      */
-    public static boolean isUltrametric(Tree tree, double threshold) {
+    public static boolean isUltrametric(TreeInterface tree, double threshold) {
         for (Node node : tree.getExternalNodes()) {
             if (Math.abs(node.getHeight()) > threshold)
                 return false;
@@ -305,12 +305,8 @@ public class TreeUtils {
      * @return true only if all tips have height exactly 0.0. Since newick is expressed in branch lengths
      * it may be necessary to use isUltrametric(tree, threshold) to allow for numerical precision issues.
      */
-    public static boolean isUltrametric(Tree tree) {
-        for (Node node : tree.getExternalNodes()) {
-            if (node.getHeight() != 0.0)
-                return false;
-        }
-        return true;
+    public static boolean isUltrametric(TreeInterface tree) {
+        return isUltrametric(tree, 0.0);
     }
 
     /**
@@ -327,8 +323,9 @@ public class TreeUtils {
 
     /**
      * get tree topology in Newick that is sorted by taxa labels or node indexes.
+     *
      * @param node
-     * @param isTaxaLabel       if true, then print taxa label instead of node index
+     * @param isTaxaLabel if true, then print taxa label instead of node index
      * @return
      */
     public static String sortedNewickTopology(Node node, boolean isTaxaLabel) {

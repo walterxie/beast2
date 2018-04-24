@@ -16,6 +16,7 @@ import javax.swing.JFrame;
 import javax.swing.WindowConstants;
 import javax.swing.filechooser.FileFilter;
 
+import beagle.BeagleFactory;
 import beagle.BeagleFlag;
 import beagle.BeagleInfo;
 import beast.app.BEASTVersion2;
@@ -282,6 +283,7 @@ public class BeastMain {
                         new Arguments.Option("help", "Print this information and stop"),
                         new Arguments.Option("version", "Print version and stop"),
                         new Arguments.Option("strictversions", "Use only package versions as specified in the 'required' attribute"),
+                        new Arguments.StringOption("D", "DEFINITIONS", "attribute-value pairs to be replaced in the XML, e.g., -D \"arg1=10,arg2=20\""),
                 });
 
         try {
@@ -417,6 +419,7 @@ public class BeastMain {
             }
         }
 
+        
         BeastConsoleApp consoleApp = null;
 
         final String nameString = "BEAST " + version.getVersionString();
@@ -522,9 +525,20 @@ public class BeastMain {
         	MCMCargs.add("-strictversions");
         }
         
+        if (arguments.hasOption("D")) {
+        	MCMCargs.add("-D");
+        	MCMCargs.add(arguments.getStringOption("D"));
+        }
+
         if (beagleShowInfo) {
-            BeagleInfo.printResourceList();
-            System.exit(0);
+            Log.info.println("\n--- BEAGLE RESOURCES ---\n");
+            for (beagle.ResourceDetails details : BeagleFactory.getResourceDetails())
+                Log.info.println(details.toString());
+
+            if (window)
+                return;
+            else
+                System.exit(0);
         }
 
         if (inputFile == null) {
@@ -557,7 +571,7 @@ public class BeastMain {
         }
 
         if (inputFile != null && inputFile.getParent() != null && working) {
-            System.setProperty("file.name.prefix", inputFile.getParentFile().getAbsolutePath());
+            System.setProperty("file.name.prefix", inputFile.getParentFile().getAbsolutePath() + File.separator);
         }
 
         if (window) {

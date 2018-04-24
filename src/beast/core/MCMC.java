@@ -50,7 +50,7 @@ import beast.util.Randomizer;
         DOI="10.1371/journal.pcbi.1003537")
 public class MCMC extends Runnable {
 
-    final public Input<Integer> chainLengthInput =
+    final public Input<Long> chainLengthInput =
             new Input<>("chainLength", "Length of the MCMC chain i.e. number of samples taken in main loop",
                     Input.Validate.REQUIRED);
 
@@ -246,7 +246,7 @@ public class MCMC extends Runnable {
         }
     } // init
 
-    public void log(final int sampleNr) {
+    public void log(final long sampleNr) {
         for (final Logger log : loggers) {
             log.log(sampleNr);
         }
@@ -263,7 +263,7 @@ public class MCMC extends Runnable {
     protected double oldLogLikelihood;
     protected double newLogLikelihood;
     protected int burnIn;
-    protected int chainLength;
+    protected long chainLength;
     protected Distribution posterior;
 
     protected List<Logger> loggers;
@@ -380,7 +380,7 @@ public class MCMC extends Runnable {
         if (burnIn > 0) {
         	Log.warning.println("Please wait while BEAST takes " + burnIn + " pre-burnin samples");
         }
-        for (int sampleNr = -burnIn; sampleNr <= chainLength; sampleNr++) {
+        for (long sampleNr = -burnIn; sampleNr <= chainLength; sampleNr++) {
             final Operator operator = propagateState(sampleNr);
 
             if (debugFlag && sampleNr % 3 == 0 || sampleNr % 10000 == 0) {
@@ -432,6 +432,10 @@ public class MCMC extends Runnable {
                 state.storeToFile(sampleNr);
                 operatorSchedule.storeToFile();
             }
+            
+            if (posterior.getCurrentLogP() == Double.POSITIVE_INFINITY) {
+            	throw new RuntimeException("Encountered a positive infinite posterior. This is a sign there may be numeric instability in the model.");
+            }
         }
         if (corrections > 0) {
         	Log.err.println("\n\nNB: " + corrections + " posterior calculation corrections were required. This analysis may not be valid!\n\n");
@@ -444,7 +448,7 @@ public class MCMC extends Runnable {
      * @param sampleNr the index of the current MCMC step
      * @return the selected {@link beast.core.Operator}
      */
-    protected Operator propagateState(final int sampleNr) {
+    protected Operator propagateState(final long sampleNr) {
         state.store(sampleNr);
 //            if (m_nStoreEvery > 0 && sample % m_nStoreEvery == 0 && sample > 0) {
 //                state.storeToFile(sample);
@@ -543,7 +547,7 @@ public class MCMC extends Runnable {
     protected void reportLogLikelihoods(final Distribution distr, final String tabString) {
         final double full =  distr.logP, last = distr.storedLogP;
         final String changed = full == last ? "" : "  **";
-        Log.err.println(tabString + "P(" + distr.getID() + ") = " + full + " (was " + last + ")" + changed);
+        Log.info.println(tabString + "P(" + distr.getID() + ") = " + full + " (was " + last + ")" + changed);
         if (distr instanceof CompoundDistribution) {
             for (final Distribution distr2 : ((CompoundDistribution) distr).pDistributions.get()) {
                 reportLogLikelihoods(distr2, tabString + "\t");
@@ -551,7 +555,7 @@ public class MCMC extends Runnable {
         }
     }
 
-    protected void callUserFunction(final int sample) {
+    protected void callUserFunction(final long sample) {
     }
 
 

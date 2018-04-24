@@ -24,14 +24,6 @@
 */
 package beast.evolution.alignment;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-
 import beast.core.Description;
 import beast.core.Input;
 import beast.core.Input.Validate;
@@ -39,7 +31,9 @@ import beast.core.parameter.Map;
 import beast.core.util.Log;
 import beast.evolution.datatype.DataType;
 import beast.evolution.datatype.StandardData;
-import beast.util.AddOnManager;
+import beast.util.PackageManager;
+
+import java.util.*;
 
 @Description("Class representing alignment data")
 public class Alignment extends Map<String> {
@@ -70,7 +64,7 @@ public class Alignment extends Map<String> {
 
     static public void findDataTypes() {
         // build up list of data types
-        List<String> m_sDataTypes = AddOnManager.find(beast.evolution.datatype.DataType.class, IMPLEMENTATION_DIR);
+        List<String> m_sDataTypes = PackageManager.find(beast.evolution.datatype.DataType.class, IMPLEMENTATION_DIR);
         for (String dataTypeName : m_sDataTypes) {
             try {
                 DataType dataType = (DataType) Class.forName(dataTypeName).newInstance();
@@ -157,7 +151,7 @@ public class Alignment extends Map<String> {
      * characters are uncertain.
      */
     public List<double[][]> tipLikelihoods = new ArrayList<>(); // #taxa x #sites x #states
-    private boolean usingTipLikelihoods = false;
+    protected boolean usingTipLikelihoods = false;
     
     /**
      * pattern state encodings *
@@ -231,24 +225,7 @@ public class Alignment extends Map<String> {
         if (userDataTypeInput.get() != null) {
             m_dataType = userDataTypeInput.get();
         } else {
-            if (types.indexOf(dataTypeInput.get()) < 0) {
-                throw new IllegalArgumentException("data type + '" + dataTypeInput.get() + "' cannot be found. " +
-                        "Choose one of " + Arrays.toString(types.toArray(new String[0])));
-            }
-            // seems to spend forever in there??
-            List<String> dataTypes = AddOnManager.find(beast.evolution.datatype.DataType.class, IMPLEMENTATION_DIR);
-            for (String dataTypeName : dataTypes) {
-                DataType dataType;
-				try {
-					dataType = (DataType) Class.forName(dataTypeName).newInstance();
-	                if (dataTypeInput.get().equals(dataType.getTypeDescription())) {
-	                    m_dataType = dataType;
-	                    break;
-	                }
-				} catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
-					throw new IllegalArgumentException(e.getMessage());
-				}
-            }
+            initDataType();
         }
 
         // initialize the sequence list
@@ -272,6 +249,31 @@ public class Alignment extends Map<String> {
             sortByTaxonSet(taxonSetInput.get());
         }
         Log.info.println(toString(false));
+    }
+
+    /**
+     * Initializes data types using
+     * {@link PackageManager#find(Class, String[]) PackageManager.find}
+     */
+    protected void initDataType() {
+        if (types.indexOf(dataTypeInput.get()) < 0) {
+            throw new IllegalArgumentException("data type + '" + dataTypeInput.get() + "' cannot be found. " +
+                    "Choose one of " + Arrays.toString(types.toArray(new String[0])));
+        }
+        // seems to spend forever in there??
+        List<String> dataTypes = PackageManager.find(DataType.class, IMPLEMENTATION_DIR);
+        for (String dataTypeName : dataTypes) {
+            DataType dataType;
+            try {
+                dataType = (DataType) Class.forName(dataTypeName).newInstance();
+                if (dataTypeInput.get().equals(dataType.getTypeDescription())) {
+                    m_dataType = dataType;
+                    break;
+                }
+            } catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
+                throw new IllegalArgumentException(e.getMessage());
+            }
+        }
     }
 
     /**
@@ -320,7 +322,7 @@ public class Alignment extends Map<String> {
     /**
      * Checks that sequences are all the same length, calculates patterns and sets up ascertainment.
      */
-    private void sanityCheckCalcPatternsSetUpAscertainment(boolean log) {
+    protected void sanityCheckCalcPatternsSetUpAscertainment(boolean log) {
         // Sanity check: make sure sequences are of same length
         int length = counts.get(0).size();
         if (!(m_dataType instanceof StandardData)) {

@@ -41,7 +41,7 @@ import org.w3c.dom.NodeList;
 
 import beast.app.util.Utils;
 import beast.core.util.Log;
-import beast.util.AddOnManager;
+import beast.util.PackageManager;
 
 
 /**
@@ -51,7 +51,7 @@ import beast.util.AddOnManager;
  * @author  Remco Bouckaert
  * @author  Walter Xie
  */
-public class AppStore {
+public class AppLauncher {
     public static final String DEFAULT_ICON = "beast/app/tools/images/utility.png";
 
     private final String ALL = "-all-";
@@ -61,7 +61,7 @@ public class AppStore {
     JButton launchButton = new JButton("Launch");
     JDialog mainDialog;
 
-    public AppStore() {
+    public AppLauncher() {
     }
 
     public JDialog launchGUI() {
@@ -248,7 +248,7 @@ public class AppStore {
 
     List<PackageApp> getPackageApps() {
         List<PackageApp> packageApps = new ArrayList<>();
-        List<String> dirs = AddOnManager.getBeastDirectories();
+        List<String> dirs = PackageManager.getBeastDirectories();
         for (String jarDirName : dirs) {
             File versionFile = new File(jarDirName + "/version.xml");
             if (versionFile.exists() && versionFile.isFile()) {
@@ -257,19 +257,22 @@ public class AppStore {
                 try {
                     doc = factory.newDocumentBuilder().parse(versionFile);
                     doc.normalize();
-                    // get addonapp info from version.xml
-                    Element addon = doc.getDocumentElement();
-                    NodeList nodes = doc.getElementsByTagName("addonapp");
+                    // get package-app info from version.xml
+                    Element packageElement = doc.getDocumentElement();
+                    NodeList nodes = doc.getElementsByTagName("packageapp");
+                    if (nodes.getLength() == 0) {
+                    	nodes = doc.getElementsByTagName("addonapp");
+                    }
                     for (int j = 0; j < nodes.getLength(); j++) {
-                        Element addOnAppElement = (Element) nodes.item(j);
+                        Element pacakgeAppElement = (Element) nodes.item(j);
                         PackageApp packageApp = new PackageApp();
-                        packageApp.packageName = addon.getAttribute("name");
+                        packageApp.packageName = packageElement.getAttribute("name");
                         packageApp.jarDir = jarDirName;
-                        packageApp.className = addOnAppElement.getAttribute("class");
-                        packageApp.description = addOnAppElement.getAttribute("description");
-                        packageApp.argumentsString = addOnAppElement.getAttribute("args");
+                        packageApp.className = pacakgeAppElement.getAttribute("class");
+                        packageApp.description = pacakgeAppElement.getAttribute("description");
+                        packageApp.argumentsString = pacakgeAppElement.getAttribute("args");
 
-                        String iconLocation = addOnAppElement.getAttribute("icon");
+                        String iconLocation = pacakgeAppElement.getAttribute("icon");
                         packageApp.icon = Utils.getIcon(iconLocation);
                         if (packageApp.icon == null || iconLocation.trim().isEmpty())
                             packageApp.icon = Utils.getIcon(DEFAULT_ICON);
@@ -331,7 +334,7 @@ public class AppStore {
 
     public void runAppFromCMD(PackageApp packageApp, String[] additionalArgs) {
         try {
-            AddOnManager.loadExternalJars();
+            PackageManager.loadExternalJars();
 
             List<String> cmd = new ArrayList<>();
             if (System.getenv("JAVA_HOME") != null) {
@@ -400,7 +403,7 @@ public class AppStore {
 	}
 
     private void printUsage(PrintStream ps) {
-        ps.println("\nAppStore: Run installed BEAST 2 package apps.\n" +
+        ps.println("\nAppLauncher: Run installed BEAST 2 package apps.\n" +
                         "\n" +
                         "Usage:\n" +
                         "\tappstore\n" +
@@ -410,18 +413,30 @@ public class AppStore {
     }
 
     private void printAppList(List<PackageApp> appList, PrintStream ps) {
-        ps.println("Package         | Class Name      | Description");
-        ps.println("----------------|-----------------|-----------------");
+
+        int maxPNlen = appList.stream().mapToInt(x -> x.packageName.length()).max().orElse(0);
+        maxPNlen = Math.max(maxPNlen+1, 15);
+
+        int maxCNlen = appList.stream().mapToInt(x -> {
+            String[] components = x.className.split("\\.");
+            return components[components.length-1].length();
+        }).max().orElse(0);
+        maxCNlen = Math.max(maxCNlen+1, 15);
+
+        String formatStr = "%-" + maxPNlen + "." + maxPNlen + "s|%-" + maxCNlen + "." + maxCNlen + "s|%s\n";
+
+        ps.format(formatStr, "Package", "Class", "Description");
+        ps.print(String.format(formatStr, "", "", "--------------------").replace(" ", "-"));
+
         for (PackageApp app : appList) {
             String[] fullClassName = app.className.split("\\.");
             String className = fullClassName[fullClassName.length-1];
-            ps.format("%-15.15s | %-15.15s | %s\n",
-                    app.packageName, className, app.description);
+            ps.format(formatStr, app.packageName, className, app.description);
         }
     }
 
     public static void main(String[] args) {
-        AppStore appStore = new AppStore();
+        AppLauncher appStore = new AppLauncher();
 
         if (args.length == 0) {
         	Utils.loadUIManager();

@@ -1,43 +1,20 @@
 package beast.util;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.Reader;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.SortedSet;
-import java.util.TreeSet;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 import beast.core.BEASTInterface;
 import beast.core.parameter.RealParameter;
 import beast.core.util.Log;
-import beast.evolution.alignment.Alignment;
-import beast.evolution.alignment.FilteredAlignment;
-import beast.evolution.alignment.Sequence;
-import beast.evolution.alignment.Taxon;
-import beast.evolution.alignment.TaxonSet;
+import beast.evolution.alignment.*;
 import beast.evolution.datatype.DataType;
 import beast.evolution.datatype.StandardData;
 import beast.evolution.datatype.UserDataType;
 import beast.evolution.tree.TraitSet;
 import beast.evolution.tree.Tree;
-import beast.math.distributions.Exponential;
-import beast.math.distributions.Gamma;
-import beast.math.distributions.LogNormalDistributionModel;
-import beast.math.distributions.MRCAPrior;
-import beast.math.distributions.Normal;
-import beast.math.distributions.ParametricDistribution;
-import beast.math.distributions.Uniform;
+import beast.math.distributions.*;
+
+import java.io.*;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 /**
@@ -47,7 +24,7 @@ public class NexusParser {
     /**
      * keep track of nexus file line number, to report when the file does not parse *
      */
-    int lineNr;
+    protected int lineNr;
 
     /**
      * Beast II objects reconstructed from the file*
@@ -71,7 +48,7 @@ public class NexusParser {
 
     public List<TaxonSet> taxonsets = new ArrayList<>();
 
-    private List<NexusParserListener> listeners = new ArrayList<>();
+    protected List<NexusParserListener> listeners = new ArrayList<>();
 
     /**
      * Adds a listener for client classes that want to monitor progress of the parsing.
@@ -132,25 +109,103 @@ public class NexusParser {
                 }
             }
             processSets();
+
+        } catch (TreeParser.TreeParsingException e) {
+            int errorLine = lineNr + 1;
+
+            if (e.getLineNum() != null)
+                errorLine += e.getLineNum()-1;
+
+            String errorMsg = "Encountered error interpreting the Newick string found around line " +
+                    errorLine + " of the input file.";
+
+            if (e.getCharacterNum() != null)
+                errorMsg += "\nThe parser reports that the error occurred at character " + (e.getCharacterNum()+1)
+                        + " of the Newick string on this line.";
+
+            errorMsg += "\nThe parser gives the following clue:\n" + e.getMessage();
+
+            throw new IOException(errorMsg);
+
         } catch (Exception e) {
-            e.printStackTrace();
-            throw new IOException("Around line " + lineNr + "\n" + e.getMessage());
+            throw new IOException("Around line " + (lineNr+1) + "\n" + e.getMessage());
         }
     } // parseFile
 
-	private void parseTreesBlock(final BufferedReader fin) throws IOException {
-        trees = new ArrayList<>();
-        // read to first non-empty line within trees block
-        String str = fin.readLine().trim();
-        while (str.equals("")) {
-            str = fin.readLine().trim();
+    /**
+     * Class representing a single command in a nexus file.
+     *
+     * Command may be terminated by either a ";" or an EOF. All whitespace
+     * is converted to single spaces.
+     * TODO Respect quoted whitespace here.
+     * (Previous implementation didn't respect this either.)
+     *
+     * Currently only used by parseTreesBlock.
+     */
+    class NexusCommand {
+        String command;
+        String arguments;
+
+        boolean isCommand(String commandName) {
+            return command.equals(commandName.toLowerCase());
         }
+
+        NexusCommand(String commandString) {
+            commandString = commandString.trim().replaceAll("\\s+", " ");
+
+            command = commandString.split(" ")[0].toLowerCase();
+
+            try {
+                arguments = commandString.substring(command.length() + 1);
+            } catch (IndexOutOfBoundsException ex) {
+                arguments = "";
+            }
+        }
+
+        @Override
+        public String toString() {
+            return "Command: " + command + ", Args: " + arguments;
+        }
+    }
+
+    /**
+     * Get next nexus command, if available.
+     *
+     * @param fin nexus file reader
+     * @return nexus command, or null if none available.
+     * @throws IOException if error reading from file
+     */
+    NexusCommand readNextCommand(BufferedReader fin) throws IOException {
+        StringBuilder commandBuilder = new StringBuilder();
+
+        while(true) {
+            int nextVal = fin.read();
+            if (nextVal<0)
+                break;
+
+            char nextChar = (char)nextVal;
+            if (nextChar == ';')
+                break;
+
+            commandBuilder.append(nextChar);
+        }
+
+        if (commandBuilder.toString().isEmpty())
+            return null;
+        else
+            return new NexusCommand(commandBuilder.toString());
+    }
+
+    protected void parseTreesBlock(final BufferedReader fin) throws IOException {
+        trees = new ArrayList<>();
+        // read to first command within trees block
+        NexusCommand nextCommand = readNextCommand(fin);
 
         int origin = -1;
 
         // if first non-empty line is "translate" then parse translate block
-        if (str.toLowerCase().contains("translate")) {
-            translationMap = parseTranslateBlock(fin);
+        if (nextCommand.isCommand("translate")) {
+            translationMap = parseTranslateCommand(nextCommand.arguments);
             origin = getIndexedTranslationMapOrigin(translationMap);
             if (origin != -1) {
                 taxa = getIndexedTranslationMap(translationMap, origin);
@@ -158,21 +213,22 @@ public class NexusParser {
         }
 
         // read trees
-        while (str != null) {
-            if (str.toLowerCase().startsWith("tree ")) {
-                final int i = str.indexOf('(');
+        while (nextCommand != null) {
+            if (nextCommand.isCommand("tree")) {
+                String treeString = nextCommand.arguments;
+                final int i = treeString.indexOf('(');
                 if (i > 0) {
-                    str = str.substring(i);
+                    treeString = treeString.substring(i);
                 }
                 TreeParser treeParser;
 
                 if (origin != -1) {
-                    treeParser = new TreeParser(taxa, str, origin, false);
+                    treeParser = new TreeParser(taxa, treeString, origin, false);
                 } else {
                     try {
-                        treeParser = new TreeParser(taxa, str, 0, false);
+                        treeParser = new TreeParser(taxa, treeString, 0, false);
                     } catch (ArrayIndexOutOfBoundsException e) {
-                        treeParser = new TreeParser(taxa, str, 1, false);
+                        treeParser = new TreeParser(taxa, treeString, 1, false);
                     }
                 }
 //                catch (NullPointerException e) {
@@ -195,12 +251,11 @@ public class NexusParser {
 //				tree.sort();
 //				tree.labelInternalNodes(nrOfLabels);
             }
-            str = fin.readLine();
-            if (str != null) str = str.trim();
+            nextCommand = readNextCommand(fin);
         }
     }
 
-    private List<String> getIndexedTranslationMap(final Map<String, String> translationMap, final int origin) {
+    protected List<String> getIndexedTranslationMap(final Map<String, String> translationMap, final int origin) {
 
         Log.warning.println("translation map size = " + translationMap.size());
 
@@ -216,7 +271,7 @@ public class NexusParser {
      * @param translationMap
      * @return minimum key value if keys are a contiguous set of integers starting from zero or one, -1 otherwise
      */
-    private int getIndexedTranslationMapOrigin(final Map<String, String> translationMap) {
+    protected int getIndexedTranslationMapOrigin(final Map<String, String> translationMap) {
 
         final SortedSet<Integer> indices = new TreeSet<>();
 
@@ -233,24 +288,18 @@ public class NexusParser {
     }
 
     /**
-     * @param reader a reader
+     * @param translateArgs string containing arguments of the translate command
      * @return a map of taxa translations, keys are generally integer node number starting from 1
      *         whereas values are generally descriptive strings.
      * @throws IOException
      */
-    private Map<String, String> parseTranslateBlock(final BufferedReader reader) throws IOException {
+    protected Map<String, String> parseTranslateCommand(String translateArgs) throws IOException {
 
         final Map<String, String> translationMap = new HashMap<>();
 
-        String line = reader.readLine();
-        final StringBuilder translateBlock = new StringBuilder();
-        while (line != null && !line.trim().toLowerCase().equals(";")) {
-            translateBlock.append(line.trim());
-            line = reader.readLine();
-        }
-        final String[] taxaTranslations = translateBlock.toString().split(",");
+        final String[] taxaTranslations = translateArgs.toString().split(",");
         for (final String taxaTranslation : taxaTranslations) {
-            final String[] translation = taxaTranslation.split("[\t ]+");
+            final String[] translation = taxaTranslation.trim().split("[\t ]+");
             if (translation.length == 2) {
                 translationMap.put(translation[0], translation[1]);
 //                Log.info.println(translation[0] + " -> " + translation[1]);
@@ -261,7 +310,7 @@ public class NexusParser {
         return translationMap;
     }
 
-    private void parseTaxaBlock(final BufferedReader fin) throws IOException {
+    protected void parseTaxaBlock(final BufferedReader fin) throws IOException {
         taxa = new ArrayList<>();
         int expectedTaxonCount = -1;
         String str;
@@ -271,9 +320,14 @@ public class NexusParser {
                 str = str.substring(str.toLowerCase().indexOf("ntax=") + 5);
                 str = str.replaceAll(";", "");
                 expectedTaxonCount = Integer.parseInt(str.trim());
-            } else if (str.toLowerCase().trim().equals("taxlabels")) {
+            } else if (str.toLowerCase().trim().startsWith("taxlabels")) {
+            	str = str.trim().substring(9).trim();
+            	boolean initial = (str.equals(""));
                 do {
-                    str = nextLine(fin);
+                	if (initial) {
+                        str = nextLine(fin);
+                	}
+                	initial = true;
                     str = str.replaceAll(";", "");
                     str = str.trim();
                     if (str.length() > 0 && !str.toLowerCase().equals("end")) {
@@ -290,8 +344,12 @@ public class NexusParser {
                             	}
                             	taxon = taxon.substring(1, taxon.length() - 1);
                             }
-                            taxa.add(taxon);
-                            taxonList.add(new Taxon(taxon));
+                        	if (!taxa.contains(taxon)) {
+                        		taxa.add(taxon);
+                        	}
+                        	if (!taxonListContains(taxon)) {
+                        		taxonList.add(new Taxon(taxon));
+                        	}
                     	}
                     }
                 } while (!str.toLowerCase().replaceAll(";", "").equals("end"));
@@ -306,8 +364,9 @@ public class NexusParser {
     /**
      * parse calibrations block and create TraitSet *
      */
-    TraitSet parseCalibrationsBlock(final BufferedReader fin) throws IOException {
+    protected TraitSet parseCalibrationsBlock(final BufferedReader fin) throws IOException {
         final TraitSet traitSet = new TraitSet();
+        traitSet.setID("traitsetDate");
         traitSet.traitNameInput.setValue("date", traitSet);
         String str;
         do {
@@ -440,6 +499,7 @@ public class NexusParser {
         if (alignment.dataTypeInput.get().equals("standard")) {
         	StandardData type = new StandardData();
             type.setInputValue("nrOfStates", totalCount);
+            //type.setInputValue("symbols", symbols);
         	type.initAndValidate();
             alignment.setInputValue("userDataType", type);
         }
@@ -547,9 +607,6 @@ public class NexusParser {
         int seqLen = 0;
         while (true) {
             str = nextLine(fin);
-            if (str.contains(";")) {
-                break;
-            }
 
             int start = 0, end;
             final String taxon;
@@ -586,7 +643,7 @@ public class NexusParser {
                 }
             }
             prevTaxon = taxon;
-            final String data = str.substring(end);
+            String data = str.substring(end);
             for (int k = 0; k < data.length(); k++) {
             	if (!Character.isWhitespace(data.charAt(k))) {
             		seqLen++;
@@ -604,12 +661,19 @@ public class NexusParser {
 //			Log.warning.println(taxon);
 //			String data = strs[strs.length - 1];
 
-            if (seqMap.containsKey(taxon)) {
-                seqMap.put(taxon, seqMap.get(taxon).append(data));
-            } else {
-                seqMap.put(taxon, new StringBuilder(data));
-                taxa.add(taxon);
+            data = data.replaceAll(";", "");
+            if (data.trim().length() > 0) {
+	            if (seqMap.containsKey(taxon)) {
+	                seqMap.put(taxon, seqMap.get(taxon).append(data));
+	            } else {
+	                seqMap.put(taxon, new StringBuilder(data));
+	                taxa.add(taxon);
+	            }
             }
+            if (str.contains(";")) {
+                break;
+            }
+
         }
         if (taxonCount > 0 && taxa.size() > taxonCount) {
             throw new IOException("Wrong number of taxa. Perhaps a typo in one of the taxa: " + taxa);
@@ -617,7 +681,9 @@ public class NexusParser {
 
         HashSet<String> sortedAmbiguities = new HashSet<>();
         for (final String taxon : taxa) {
-        	taxonList.add(new Taxon(taxon));
+        	if (!taxonListContains(taxon)) {
+        		taxonList.add(new Taxon(taxon));
+        	}
             final StringBuilder bsData = seqMap.get(taxon);
             String data = bsData.toString().replaceAll("\\s", "");
             seqMap.put(taxon, new StringBuilder(data));
@@ -714,7 +780,16 @@ public class NexusParser {
         return alignment;
     } // parseDataBlock
 
-    private String getNextDataBlock(String str, BufferedReader fin) throws IOException {
+    private boolean taxonListContains(String taxon) {
+    	for (Taxon t : taxonList) {
+    		if (t.getID().equals(taxon)) {
+    			return true;
+    		}
+    	}
+		return false;
+	}
+
+	private String getNextDataBlock(String str, BufferedReader fin) throws IOException {
         while (str.indexOf(';') < 0) {
             str += nextLine(fin);
         }
@@ -722,7 +797,7 @@ public class NexusParser {
 
 		if (str.toLowerCase().matches(".*matrix.*")) {
 			// will only get here when there
-			throw new IllegalArgumentException("Mallformed nexus file: perhaps a semi colon is missing before 'matrix'");
+			throw new IllegalArgumentException("Malformed nexus file: perhaps a semi-colon is missing before 'matrix'");
 		}
 		return str;
     }
@@ -740,7 +815,7 @@ public class NexusParser {
      * end;
      * 
      */
-    void parseAssumptionsBlock(final BufferedReader fin) throws IOException {
+    protected void parseAssumptionsBlock(final BufferedReader fin) throws IOException {
         String str;
         do {
             str = nextLine(fin);
@@ -748,6 +823,7 @@ public class NexusParser {
             	// remove text in brackets (as TreeBase files are wont to contain)
                 str = str.replaceAll("\\(.*\\)", "");
                 // clean up spaces
+                str = str.replaceAll("=", " = ");
                 str = str.replaceAll("^\\s+", "");
                 str = str.replaceAll("\\s*-\\s*", "-");
                 str = str.replaceAll("\\s*\\\\\\s*", "\\\\");
@@ -802,7 +878,7 @@ public class NexusParser {
             		String taxonSetName = strs2[1];
             		str0 = strs[strs.length - 1].trim();
             		if (!str0.endsWith(";")) {
-            			Log.warning.println("expected 'taxset <name> = ...;' semi-colin is missing: " + str + "\n"
+            			Log.warning.println("expected 'taxset <name> = ...;' semi-colon is missing: " + str + "\n"
             					+ "Taxa from following lines may be missing.");
             		}
             		str0 = str0.replaceAll(";", "");
@@ -855,71 +931,18 @@ public class NexusParser {
             		// next get the calibration
             		str0 = strs[strs.length - 1].trim();
             		String [] strs3 = str0.split("[\\(,\\)]");
-            		RealParameter [] param = new RealParameter[strs3.length];
-            		for (int i = 1; i < strs3.length; i++) {
-            			try {
-            				param[i] = new RealParameter(strs3[i]);
-            				param[i].setID("param." + i);
-            			} catch (Exception  e) {
-							// ignore parsing errors
-						}
-            		}
-            		ParametricDistribution distr  = null;
-            		switch (strs3[0]) {
-            		case "normal":
-            			distr = new Normal();
-            			distr.initByName("mean", param[1], "sigma", param[2]);
-            			distr.setID("Normal.0");
-            			break;
-            		case "uniform":
-            			distr = new Uniform();
-            			distr.initByName("lower", strs3[1], "upper", strs3[2]);
-            			distr.setID("Uniform.0");
-            			break;
-            		case "fixed":
-            			// uniform with lower == upper
-            			distr = new Normal();
-            			distr.initByName("mean", param[1], "sigma", "+Infinity");
-            			distr.setID("Normal.0");
-            			break;
-            		case "offsetlognormal":
-            			distr = new LogNormalDistributionModel();
-            			distr.initByName("offset", strs3[1], "M", param[2], "S", param[3], "meanInRealSpace", true);
-            			distr.setID("LogNormalDistributionModel.0");
-            			break;
-            		case "lognormal":
-            			distr = new LogNormalDistributionModel();
-            			distr.initByName("M", param[1], "S", param[2], "meanInRealSpace", true);
-            			distr.setID("LogNormalDistributionModel.0");
-            			break;
-            		case "offsetexponential":
-            			distr = new Exponential();
-            			distr.initByName("offset", strs3[1], "mean", param[2]);
-            			distr.setID("Exponential.0");
-            			break;
-            		case "gamma":
-            			distr = new Gamma();
-            			distr.initByName("alpha", param[1], "beta", param[2]);
-            			distr.setID("Gamma.0");
-            			break;
-            		case "offsetgamma":
-            			distr = new Gamma();
-            			distr.initByName("offset", strs3[1], "alpha", param[2], "beta", param[3]);
-            			distr.setID("Gamma.0");
-            			break;
-            		default:
-            			throw new RuntimeException("Unknwon distribution "+ strs3[0] +"in calibration: " + str);
-            		}
-            		MRCAPrior prior = new MRCAPrior();
-            		prior.isMonophyleticInput.setValue(true, prior);
-            		prior.distInput.setValue(distr, prior);
-            		prior.taxonsetInput.setValue(taxonset, prior);
-            		prior.setID(taxonset.getID() + ".prior");
-            		// should set Tree before initialising, but we do not know the tree yet...
-            		if (calibrations == null) {
-            			calibrations = new ArrayList<>();
-            		}
-            		calibrations.add(prior);
+
+            		try {
+                        MRCAPrior prior = getMRCAPrior(taxonset, strs3);
+
+                        // should set Tree before initialising, but we do not know the tree yet...
+                        if (calibrations == null) {
+                            calibrations = new ArrayList<>();
+                        }
+                        calibrations.add(prior);
+                    } catch (RuntimeException ex) {
+                        throw new RuntimeException(ex.getMessage() + "in calibration: " + str);
+                    }
             	}
             }
 
@@ -927,8 +950,82 @@ public class NexusParser {
         } while (!str.toLowerCase().contains("end;"));
     }
 
+    //TODO mv to somewhere easy to access ?
+    /**
+     * get a MRCAPrior object for given taxon set,
+     * from a string array which determines the distribution
+     * @param taxonset
+     * @param strs3 [0] is distribution name,
+     *              [1]-[3] for values to determine the distribution
+     * @return a MRCAPrior object
+     * @throws RuntimeException
+     */
+    public MRCAPrior getMRCAPrior(TaxonSet taxonset, String[] strs3) throws RuntimeException {
+        RealParameter[] param = new RealParameter[strs3.length];
+        for (int i = 1; i < strs3.length; i++) {
+            try {
+                param[i] = new RealParameter(strs3[i]);
+                param[i].setID("param." + i);
+            } catch (Exception  e) {
+                // ignore parsing errors
+            }
+        }
+        ParametricDistribution distr  = null;
+        switch (strs3[0]) {
+        case "normal":
+            distr = new Normal();
+            distr.initByName("mean", param[1], "sigma", param[2]);
+            distr.setID("Normal.0");
+            break;
+        case "uniform":
+            distr = new Uniform();
+            distr.initByName("lower", strs3[1], "upper", strs3[2]);
+            distr.setID("Uniform.0");
+            break;
+        case "fixed":
+            // uniform with lower == upper
+            distr = new Normal();
+            distr.initByName("mean", param[1], "sigma", "+Infinity");
+            distr.setID("Normal.0");
+            break;
+        case "offsetlognormal":
+            distr = new LogNormalDistributionModel();
+            distr.initByName("offset", strs3[1], "M", param[2], "S", param[3], "meanInRealSpace", true);
+            distr.setID("LogNormalDistributionModel.0");
+            break;
+        case "lognormal":
+            distr = new LogNormalDistributionModel();
+            distr.initByName("M", param[1], "S", param[2], "meanInRealSpace", true);
+            distr.setID("LogNormalDistributionModel.0");
+            break;
+        case "offsetexponential":
+            distr = new Exponential();
+            distr.initByName("offset", strs3[1], "mean", param[2]);
+            distr.setID("Exponential.0");
+            break;
+        case "gamma":
+            distr = new Gamma();
+            distr.initByName("alpha", param[1], "beta", param[2]);
+            distr.setID("Gamma.0");
+            break;
+        case "offsetgamma":
+            distr = new Gamma();
+            distr.initByName("offset", strs3[1], "alpha", param[2], "beta", param[3]);
+            distr.setID("Gamma.0");
+            break;
+        default:
+            throw new RuntimeException("Unknwon distribution "+ strs3[0]);
+        }
+        MRCAPrior prior = new MRCAPrior();
+        prior.isMonophyleticInput.setValue(true, prior);
+        prior.distInput.setValue(distr, prior);
+        prior.taxonsetInput.setValue(taxonset, prior);
+        prior.setID(taxonset.getID() + ".prior");
+        return prior;
+    }
+
     
-    private void processSets() {
+    protected void processSets() {
     	// create monophyletic MRCAPrior for each taxon set that 
     	// does not already have a calibration associated with it
     	for (TaxonSet taxonset : taxonsets) {
@@ -1006,7 +1103,7 @@ public class NexusParser {
     /**
      * read line from nexus file *
      */
-    String readLine(final BufferedReader fin) throws IOException {
+    protected String readLine(final BufferedReader fin) throws IOException {
         if (!fin.ready()) {
             return null;
         }
@@ -1017,7 +1114,7 @@ public class NexusParser {
     /**
      * read next line from nexus file that is not a comment and not empty *
      */
-    String nextLine(final BufferedReader fin) throws IOException {
+    protected String nextLine(final BufferedReader fin) throws IOException {
         String str = readLine(fin);
         if (str == null) {
             return null;
@@ -1043,7 +1140,7 @@ public class NexusParser {
     /**
      * return attribute value as a string *
      */
-    String getAttValue(final String attribute, final String str) {
+    protected String getAttValue(final String attribute, final String str) {
         final Pattern pattern = Pattern.compile(".*" + attribute + "\\s*=\\s*([^\\s;]+).*");
         final Matcher matcher = pattern.matcher(str.toLowerCase());
         if (!matcher.find()) {

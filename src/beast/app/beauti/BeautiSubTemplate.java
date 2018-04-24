@@ -34,6 +34,7 @@ import beast.evolution.alignment.Alignment;
 import beast.evolution.alignment.FilteredAlignment;
 import beast.evolution.likelihood.GenericTreeLikelihood;
 import beast.evolution.sitemodel.SiteModel;
+import beast.evolution.sitemodel.SiteModelInterface.Base;
 import beast.evolution.substitutionmodel.SubstitutionModel;
 import beast.util.XMLParser;
 
@@ -67,6 +68,7 @@ public class BeautiSubTemplate extends BEASTObject {
 //	ConnectCondition [] conditions;
     String mainID = "";
     String shortClassName;
+    public String getShortClassName() {return shortClassName;}
 
     @Override
     public void initAndValidate() {
@@ -245,7 +247,11 @@ public class BeautiSubTemplate extends BEASTObject {
 	    transformer.setOutputProperty(OutputKeys.INDENT, "yes");
 	    transformer.transform(domSource, result);
 	    String xml = writer.toString();
-	    xml = xml.substring(xml.indexOf("<beast xmlns:beauti=\"http://beast2.org\">") + 40, xml.lastIndexOf("</beast>"));
+	    if (xml.lastIndexOf("</beast>") >= 0) {
+	    	xml = xml.substring(xml.indexOf("<beast xmlns:beauti=\"http://beast2.org\">") + 40, xml.lastIndexOf("</beast>"));
+	    } else {
+	    	xml = "";
+	    }
 	    return xml;
 	}
 
@@ -273,7 +279,9 @@ public class BeautiSubTemplate extends BEASTObject {
         // find template that created this beastObject
         String id = beastObject.getID();
         //String partition = BeautiDoc.parsePartition(id);
-        id = id.substring(0, id.indexOf("."));
+        if (id.indexOf(".") > 0) {
+        	id = id.substring(0, id.indexOf("."));
+        }
         BeautiSubTemplate template = null;
         for (BeautiSubTemplate template2 : doc.beautiConfig.subTemplatesInput.get()) {
             if (template2.matchesName(id)) {
@@ -329,7 +337,21 @@ public class BeautiSubTemplate extends BEASTObject {
         return createSubNet(new PartitionContext(partition), idMap, init);
     }
 
+    /** the subNetDepth is increased 
+     * 1. the first time a subtemplate is created
+     * 2. when a required input is missing from the template and the RequiredInputProvider tries an alternative
+     * It is also increased if (2) fails repeatedly.
+     * It is decreased when createSubNet successfully finished.
+     */
+    int subNetDepth = 0;
+    
     private BEASTInterface createSubNet(PartitionContext context, /*BeautiDoc doc,*/ HashMap<String, BEASTInterface> idMap, boolean init) {
+    	subNetDepth++;
+    	if (subNetDepth > 10) {
+    		// looks like we cannot find what we are looking for
+    		throw new IllegalArgumentException("Potential programmer error: It looks like there is a required input that was not specified in the tenmplate");
+    	}
+    	
         // wrap in a beast element with appropriate name spaces
         String _sXML = "<beast version='2.0' \n" +
                 "namespace='beast.app.beauti:beast.core:beast.evolution.branchratemodel:beast.evolution.speciation:beast.evolution.tree.coalescent:beast.core.util:beast.evolution.nuc:beast.evolution.operators:beast.evolution.sitemodel:beast.evolution.substitutionmodel:beast.evolution.likelihood:beast.evolution:beast.math.distributions'>\n" +
@@ -402,6 +424,7 @@ public class BeautiSubTemplate extends BEASTObject {
         }
 
         if (mainID.equals("[top]")) {
+            subNetDepth--;
             return beastObjects.get(0);
         }
 
@@ -416,14 +439,11 @@ public class BeautiSubTemplate extends BEASTObject {
 	            SiteModel.Base siteModel = (SiteModel.Base) ((GenericTreeLikelihood) treeLikelihood).siteModelInput.get();
 	            SubstitutionModel substModel = siteModel.substModelInput.get();
 	            try {
-	                siteModel.canSetSubstModel(substModel);
-	            } catch (Exception e) {
-	                Object o = doc.createInput(siteModel, siteModel.substModelInput, context);
-	                try {
-	                    siteModel.substModelInput.setValue(o, siteModel);
-	                } catch (Exception ex) {
-	                    ex.printStackTrace();
+	                if (!siteModel.canSetSubstModel(substModel)) {
+	                	setUpSubstModel(siteModel, context);
 	                }
+	            } catch (Exception e) {
+                	setUpSubstModel(siteModel, context);
 	            }
             }
 
@@ -446,11 +466,21 @@ public class BeautiSubTemplate extends BEASTObject {
             }
         }
 
+        subNetDepth--;
         //System.err.println(new XMLProducer().toXML(beastObject));
         return beastObject;
     }
 
-    public String getMainID() {
+    private void setUpSubstModel(Base siteModel, PartitionContext context) {
+        Object o = doc.createInput(siteModel, siteModel.substModelInput, context);
+        try {
+            siteModel.substModelInput.setValue(o, siteModel);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+	}
+
+	public String getMainID() {
         return mainID;
     }
 

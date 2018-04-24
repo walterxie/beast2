@@ -1,10 +1,75 @@
-                    BEAST v2.4.5 2017
-                 Beast 2 development team 2011-2017
+                    BEAST v2.5.0 2018
+                 Beast 2 development team 2011-2018
 Version History
-Last updated: May 2017
+Last updated: April 2018
 
 All issues can be viewed at https://github.com/CompEvol/beast2/issues
 ================================================================================
+Version 2.5.0
+        BEAST & friends are now compatible with Java 8, 9 and 10.
+        All appllications start a bit faster now package discovery is cached.
+        Versions available with Java bundled
+        
+BEAST   
+        A command line option is added to parameterise XML files.
+        Maximum MCMC length was 2147483647 is now 9223372036854775807.
+        Fix for resume of coalescent, which sometimes failed.
+        RPNCalculator logs starting from 1 consistent with multi dimensional parameters
+
+BEAUti
+        Facility to automatic update packages when BEAUti is started
+        Tip dates panel supports wider range of formats
+        Added clear classpath menu 
+        More robust NEXUS parsing
+        Allow top level templates, to easily switch between say MCMC and nested sampling
+        Bug fix for unlimited prior distributions to be changed
+        More robust substitution model initialisation
+        
+Utilities: 
+        Renamed appstore => applauncher to preven confusion with OS X app store.
+        Renamed addonmanager => packagemanager 
+        Packagemanager has an -update option to check for updates and -updatenow to install without asking
+        Better progress reporting on logcombiner, treeannotator, loganalyser
+
+
+Version 2.4.8 January 2018
+BEAST   Ensure BeagleTreeLikelihood gives correct likelihood with RNA data.
+
+Version 2.4.7 July 2017
+BEAUti
+	Relabel buttons: "Guess" is now "Auto configure" in tip dates panel. "+" button on priors panel is now "+ Add Prior".
+	More sensible default date value for taxa without date specified in tip dates panel.
+	Make sure the appropriate tree is used in MRCAprior.
+	Make sure tips with 'fixed' distributions imported from Nexus do not get estimated.
+	Robustify NEXUS parser.
+	Taxa could be duplicated in taxon list in NexusParser.
+	Prevent accidentally cloning of up-down-all operator in StarBeast.
+	
+BEAST
+	Default locale set to English so full stops are used in NEXUS output.
+ 	Warn if Yule (or BD) conditions on root, but no root MRCAPrior is set.
+	Robustify resume 
+	Suppress "Overwrite (Y/N)?" message when BEAST runs in console.
+	Stop chain when encountering a +infinity posterior.
+	Check that taxon set is specified when using RandomTree.
+	Normalise stateNodes so XML characters ('"&<>) get escaped properly when writing state files.
+
+
+Appstore
+	Improved formatting of app list.
+
+TreeAnnotator 
+	Now adds common ancestor height estimates as attributes.
+
+API updates:
+	Changed access levels of a few methods in nexus parser.
+	Add Tree scale and ScaleOperator test.
+	Add new Tree constructor from root node.
+	Add support for input/output of non-binary trees.
+	Add Input.set() method.
+	BeautiAlignmentProvider getAlignments method added to facilitate scripting.
+	TreeParser correctly parses tree edge length metadata, and improved error reporting.
+
 Version 2.4.6 May 2017
     BEAUti
 	    Starting trees can now be edited (default random, choice of cluster and newick trees)
