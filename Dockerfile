@@ -18,7 +18,8 @@
 # the graphical output of these tests.
 
 FROM openjdk:8
-#FROM java:8-jre
+# Avoid fatal error JRE
+ENV ES_JAVA_OPTS "-Xms512m -Xmx1g"
 
 # Install Apache Ant
 RUN apt-get update && apt-get install -y ant
