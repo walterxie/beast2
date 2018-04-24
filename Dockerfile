@@ -19,7 +19,7 @@
 
 FROM openjdk:8
 # Avoid fatal error JRE
-ENV ES_JAVA_OPTS "-Xms2g -Xmx2g"
+ENV ES_JAVA_OPTS "-Xms2g -Xmx2g -XX:MaxRAMFraction=1"
 
 # Install Apache Ant
 RUN apt-get update && apt-get install -y ant

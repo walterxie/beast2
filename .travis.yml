@@ -7,4 +7,5 @@ before_install:
     - docker build -t docker-image .
 
 script:
-    - docker run -m 4g -e JAVA_OPTIONS='-Xmx2g' docker-image
+    - docker run -m 4g java  -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap -XshowSettings:vm -version
+    - docker run -m 4g docker-image
