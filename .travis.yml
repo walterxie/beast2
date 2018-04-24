@@ -4,8 +4,8 @@ services:
     - docker
 
 before_install:
-    - docker build -t docker-image .
+    - docker build -m 4g -t docker-image .
 
 script:
-    - docker run -m 4g java  -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap -XshowSettings:vm -version
+    - docker run -m 4g openjdk:8 java -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap -XshowSettings:vm -version
     - docker run -m 4g docker-image
