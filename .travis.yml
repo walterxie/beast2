@@ -7,4 +7,4 @@ before_install:
     - docker build -t docker-image .
 
 script:
-    - docker run docker-image
+    - docker run -m 4g -e JAVA_OPTIONS='-Xmx2g' docker-image
