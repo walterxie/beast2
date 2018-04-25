@@ -18,8 +18,6 @@
 # the graphical output of these tests.
 
 FROM openjdk:8
-# Avoid fatal error JRE
-ENV ES_JAVA_OPTS "-Xms2g -Xmx2g -XX:MaxRAMFraction=1"
 
 # Install Apache Ant
 RUN apt-get update && apt-get install -y ant
@@ -36,7 +34,6 @@ RUN chmod 600 /root/.vnc/passwd
 RUN apt-get update && apt-get install -y build-essential autoconf automake libtool pkg-config
 RUN cd /root && git clone --depth=1 https://github.com/beagle-dev/beagle-lib.git
 RUN cd /root/beagle-lib && ./autogen.sh && ./configure --prefix=/usr/local && make install
-ENV LD_LIBRARY_PATH=/lib:/usr/lib:/usr/local/lib
 RUN ldconfig
 
 # Ant build fails if the repo dir isn't named beast2
@@ -44,8 +41,5 @@ RUN mkdir /root/beast2
 WORKDIR /root/beast2
 
 ADD . ./
-
-# test java
-RUN java -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap -XshowSettings:vm -version
 
 CMD vncserver $DISPLAY -geometry 1920x1080; ant travis
