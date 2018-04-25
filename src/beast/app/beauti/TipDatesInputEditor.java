@@ -5,8 +5,11 @@ import beast.core.BEASTInterface;
 import beast.core.Input;
 import beast.core.util.Log;
 import beast.evolution.alignment.Taxon;
+import beast.evolution.alignment.TaxonSet;
 import beast.evolution.tree.TraitSet;
 import beast.evolution.tree.Tree;
+import beast.math.distributions.MRCAPrior;
+import beast.util.NexusParser;
 
 import javax.swing.*;
 import javax.swing.event.CellEditorListener;
@@ -105,8 +108,8 @@ public class TipDatesInputEditor extends BEASTObjectInputEditor {
 
     private Component createListBox() {
         taxa = traitSet.taxaInput.get().asStringList();
-        String[] columnData = new String[]{"Name", "Date (raw value)", "Height"};
-        tableData = new Object[taxa.size()][3];
+        String[] columnData = new String[]{"Name", "Date (raw value)", "Height", "Uncertainty"};
+        tableData = new Object[taxa.size()][4];
         convertTraitToTableData();
         // set up table.
         // special features: background shading of rows
@@ -199,6 +202,7 @@ public class TipDatesInputEditor extends BEASTObjectInputEditor {
             if (!heightsOnly)
                 tableData[i][1] = "0";
              tableData[i][2] = "0";
+             tableData[i][3] = "0";
         }
     }
 
@@ -220,27 +224,38 @@ public class TipDatesInputEditor extends BEASTObjectInputEditor {
             if (taxonIndex >= 0) {
                 tableData[taxonIndex][1] = normalize(strs[1]);
                 tableData[taxonIndex][0] = taxonID;
+                //TODO how to load precision in Uniform prior from traitSet?
             } else {
             	Log.warning.println("WARNING: File contains taxon " + taxonID + " that cannot be found in alignment");
             }
         }
 
         try {
+            double[][] dateAndPrecisionTable = new double[tableData.length][];
+            for (int i = 0; i < tableData.length; i++)
+              dateAndPrecisionTable[i] = traitSet.parseDateString((String) tableData[i][1]);
+
             if (traitSet.traitNameInput.get().equals(TraitSet.DATE_BACKWARD_TRAIT)) {
                 Double minDate = Double.MAX_VALUE;
                 for (int i = 0; i < tableData.length; i++) {
-                    minDate = Math.min(minDate, traitSet.convertValueToDouble((String) tableData[i][1]));
+//                    minDate = Math.min(minDate, traitSet.convertValueToDouble((String) tableData[i][1]));
+                    minDate = Math.min(minDate, dateAndPrecisionTable[i][0]);
                 }
                 for (int i = 0; i < tableData.length; i++) {
-                    tableData[i][2] = traitSet.convertValueToDouble((String) tableData[i][1]) - minDate;
+//                    tableData[i][2] = traitSet.convertValueToDouble((String) tableData[i][1]) - minDate;
+                    tableData[i][2] = dateAndPrecisionTable[i][0] - minDate;
+                    tableData[i][3] = dateAndPrecisionTable[i][1];
                 }
             } else {
                 Double maxDate = 0.0;
                 for (int i = 0; i < tableData.length; i++) {
-                    maxDate = Math.max(maxDate, traitSet.convertValueToDouble((String) tableData[i][1]));
+//                    maxDate = Math.max(maxDate, traitSet.convertValueToDouble((String) tableData[i][1]));
+                    maxDate = Math.max(maxDate, dateAndPrecisionTable[i][0]);
                 }
                 for (int i = 0; i < tableData.length; i++) {
-                    tableData[i][2] = maxDate - traitSet.convertValueToDouble((String) tableData[i][1]);
+//                    tableData[i][2] = maxDate - traitSet.convertValueToDouble((String) tableData[i][1]);
+                    tableData[i][2] = maxDate - dateAndPrecisionTable[i][0];
+                    tableData[i][3] = dateAndPrecisionTable[i][1];
                 }
             }
         } catch (DateTimeParseException ex) {
@@ -261,8 +276,45 @@ public class TipDatesInputEditor extends BEASTObjectInputEditor {
             for (int i = 0; i < tableData.length; i++) {
                 table.setValueAt(tableData[i][1], i, 1);
                 table.setValueAt(tableData[i][2], i, 2);
+                table.setValueAt(tableData[i][3], i, 3);
             }
         }
+
+        //TODO where to add this? traitSet.traitNameInput not updated
+        if (traitSet.hasPrecision()) {
+            // add MRCAPrior of Uniform distr for tips with uncertainty
+            final NexusParser parser = new NexusParser();
+
+            for (String taxonName : taxa) {
+                // have to be singleton
+                Taxon taxon = new Taxon(taxonName);
+                TaxonSet taxonset = new TaxonSet();
+                taxonset.setID(taxon.getID() + ".leaf");
+                taxonset.taxonsetInput.setValue(taxon, taxonset);
+
+                // get uncertainty
+                double[] hu = getHeightAndUncertainty(taxonName);
+                double v = traitSet.getDate(hu[0]);
+                if (hu[1] > 0) {
+                    //TODO wrong mean, how to get date?
+                    double upper = v;//hu[0];
+                    double lower = v;//hu[0];
+//                    if (traitSet.traitNameInput.get().equals(TraitSet.DATE_BACKWARD_TRAIT)) {
+                    if (true) {
+                        upper += hu[1];
+                    } else {
+                        lower -= hu[1];
+                    }
+
+                    // Uniform
+                    String[] strs3 = new String[]{"uniform", Double.toString(lower), Double.toString(upper)};
+                    MRCAPrior prior = parser.getMRCAPrior(taxonset, strs3);
+
+                    doc.addMRCAPrior(prior);
+                }
+            }
+        }
+
     } // convertTraitToTableData
 
     private String normalize(String str) {
@@ -414,35 +466,37 @@ public class TipDatesInputEditor extends BEASTObjectInputEditor {
         guessButton.setToolTipText("Automatically configure dates based on taxon names");
         guessButton.setName("Guess");
         guessButton.addActionListener(e -> {
-                GuessPatternDialog dlg = new GuessPatternDialog(null, m_sPattern);
-                dlg.allowAddingValues();
-                String trait = "";
-                switch (dlg.showDialog("Guess dates")) {
-                    case canceled:
-                        return;
-                    case trait:
-                        trait = dlg.getTrait();
-                        break;
-                    case pattern:
-                        for (String taxon : taxa) {
-                            String match = dlg.match(taxon);
-                            if (match == null) {
-                                return;
-                            }
-                            if (trait.length() > 0) {
-                                trait += ",";
-                            }
-                            trait += taxon + "=" + match;
+            GuessPatternDialog dlg = new GuessPatternDialog(null, m_sPattern, traitSet.hasPrecision());
+            dlg.allowAddingValues();
+            String trait = "";
+            switch (dlg.showDialog("Guess dates")) {
+                case canceled:
+                    return;
+                case trait:
+                    trait = dlg.getTrait();
+                    break;
+                case pattern:
+                    for (String taxon : taxa) {
+                        String match = dlg.match(taxon);
+                        if (match == null) {
+                            return;
                         }
-                        break;
-                }
-                try {
-                    traitSet.traitsInput.setValue(trait, traitSet);
-                } catch (Exception ex) {
-                    // TODO: handle exception
-                }
-                refreshPanel();
-            });
+                        if (trait.length() > 0) {
+                            trait += ",";
+                        }
+                        trait += taxon + "=" + match;
+                    }
+                    break;
+            }
+            try {
+                traitSet.setHasPrecision(dlg.hasPrecision);
+                traitSet.traitsInput.setValue(trait, traitSet);
+            } catch (Exception ex) {
+                // TODO: handle exception
+            }
+
+            refreshPanel();
+        });
         buttonBox.add(guessButton);
 
 
@@ -461,4 +515,13 @@ public class TipDatesInputEditor extends BEASTObjectInputEditor {
 
         return buttonBox;
     } // createButtonBox
+
+    protected double[] getHeightAndUncertainty(String taxonName) {
+        for (int i = 0; i < tableData.length; i++) {
+            if (taxonName.equals(tableData[i][0])) {
+                return new double[]{new Double(tableData[i][2].toString()),new Double(tableData[i][3].toString())};
+            }
+        }
+        throw new IllegalArgumentException("Cannot find taxon name " + taxonName + " from tableData !");
+    }
 }

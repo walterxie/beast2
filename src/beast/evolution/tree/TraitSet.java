@@ -1,20 +1,19 @@
 package beast.evolution.tree;
 
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 import beast.core.BEASTObject;
 import beast.core.Description;
 import beast.core.Input;
 import beast.core.Input.Validate;
 import beast.core.util.Log;
 import beast.evolution.alignment.TaxonSet;
+
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.*;
 
 
 @Description("A trait set represent a collection of properties of taxons, for the use of initializing a tree. " +
@@ -54,7 +53,16 @@ public class TraitSet extends BEASTObject {
     double[] values;
     double minValue;
     double maxValue;
-    
+
+    /**
+     * the uncertainty of date
+     */
+    double[] precisions;
+    private boolean hasPrecision = false;
+
+    /**
+     * map taxon name to taxon index (taxonNr) in both values[] and taxonValues[]
+     */
     Map<String, Integer> map;
 
     /**
@@ -76,6 +84,7 @@ public class TraitSet extends BEASTObject {
         String[] traits = traitsInput.get().split(",");
         taxonValues = new String[labels.size()];
         values = new double[labels.size()];
+        precisions = new double[labels.size()];
         for (String trait : traits) {
             trait = trait.replaceAll("\\s+", " ");
             String[] strs = trait.split("=");
@@ -89,7 +98,10 @@ public class TraitSet extends BEASTObject {
             }
             taxonValues[taxonNr] = normalize(strs[1]);
             try {
-                values[taxonNr] = convertValueToDouble(taxonValues[taxonNr]);
+//                values[taxonNr] = convertValueToDouble(taxonValues[taxonNr]);
+                double[] dateAndPrecision = parseDateString(taxonValues[taxonNr]);
+                values[taxonNr] = dateAndPrecision[0];
+                precisions[taxonNr] = dateAndPrecision[1];
             } catch (DateTimeParseException ex) {
                 Log.err.println("Failed to parse date '" + taxonValues[taxonNr] + "' using format '" + dateTimeFormatInput.get() + "'.");
                 System.exit(1);
@@ -178,8 +190,13 @@ public class TraitSet extends BEASTObject {
         return values[map.get(taxonName)];
     }
 
+    public Set<String> getTaxonNames() {
+        return map.keySet();
+    }
+
     /**
      * see if we can convert the string to a double value *
+     * @deprecated replaced by {@link #parseDateString(String) parseDateString}
      */
     public double convertValueToDouble(String str) {
         // default, try to interpret the string as a number
@@ -224,6 +241,100 @@ public class TraitSet extends BEASTObject {
 
         return Double.NaN;
     }
+
+
+    /**
+     * see if we can convert the date string to a double value
+     * @param str date string
+     * @return a array [0] is value, [1] is precision
+     */
+    public double[] parseDateString(String str) {
+        // a array [0] is value, [1] is precision
+        double[] dateAndPrecision = new double[]{Double.NaN, 0.0};
+
+        // if hasPrecision, the str must be yyyy-MM-dd, yyyy-MM, or yyyy
+        if (hasPrecision) {
+            // set the timezones to GMT so they match the origin date...
+            DateFormat dateFormat1 = new SimpleDateFormat("yyyy-MM-dd");
+            dateFormat1.setTimeZone(TimeZone.getTimeZone("GMT"));
+            DateFormat dateFormat2 = new SimpleDateFormat("yyyy-MM");
+            dateFormat2.setTimeZone(TimeZone.getTimeZone("GMT"));
+            DateFormat dateFormat3 = new SimpleDateFormat("yyyy");
+            dateFormat3.setTimeZone(TimeZone.getTimeZone("GMT"));
+
+            long milliseconds;
+            try {
+                Date date = dateFormat1.parse(str);
+                milliseconds = date.getTime();
+                dateAndPrecision[1] = 0.0; // precision
+            } catch (ParseException pe1) {
+                try {
+                    Date date = dateFormat2.parse(str);
+                    milliseconds = date.getTime();
+                    dateAndPrecision[1] = 1.0 / 12.0;
+                } catch (ParseException pe2) {
+                    try {
+                        Date date = dateFormat3.parse(str);
+                        milliseconds = date.getTime();
+                        dateAndPrecision[1] = 1.0;
+                    } catch (ParseException pe3) {
+                        throw new IllegalArgumentException("Badly formatted date " + str);
+                    }
+                }
+            }
+            // string date to milliseconds
+            dateAndPrecision[0] = 1970.0 + milliseconds / (60.0 * 60 * 24 * 365 * 1000);
+
+            switch (unitsInput.get()) {
+                case month:
+                    dateAndPrecision[0] *= 12.0;
+                case day:
+                    dateAndPrecision[0] *= 365;
+            }
+            return dateAndPrecision;
+
+        } else {
+            // default, try to interpret the string as a number
+            try {
+                return new double[]{Double.parseDouble(str), 0.0};
+            } catch (NumberFormatException e) {
+                // does not look like a number
+                if (traitNameInput.get().equals(DATE_TRAIT) ||
+                        traitNameInput.get().equals(DATE_FORWARD_TRAIT) ||
+                        traitNameInput.get().equals(DATE_BACKWARD_TRAIT)) {
+
+                    if (dateTimeFormatInput.get() == null) {
+                        if (str.matches(".*[a-zA-Z].*")) {
+                            str = str.replace('/', '-');
+                        }
+                        // following is deprecated, but the best thing around at the moment
+                        // see also comments in TipDatesInputEditor
+                        long date = Date.parse(str);
+                        dateAndPrecision[0] = 1970.0 + date / (60.0 * 60 * 24 * 365 * 1000);
+                        Log.warning.println("No date/time format provided, using default parsing: '" + str + "' parsed as '" + dateAndPrecision[0] + "'");
+                    } else {
+                        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(dateTimeFormatInput.get());
+                        LocalDate date = LocalDate.parse(str, formatter);
+
+                        Log.warning.println("Using format '" + dateTimeFormatInput.get() + "' to parse '" + str +
+                                "' as: " + (date.getYear() + (date.getDayOfYear()-1.0) / (date.isLeapYear() ? 366.0 : 365.0)));
+
+                        dateAndPrecision[0] = date.getYear() + (date.getDayOfYear()-1.0) / (date.isLeapYear() ? 366.0 : 365.0);
+                    }
+
+                    switch (unitsInput.get()) {
+                        case month:
+                            dateAndPrecision[0] *= 12.0;
+                        case day:
+                            dateAndPrecision[0] *= 365;
+                    }
+                    return dateAndPrecision;
+                }
+            } // end catch
+        }
+        return dateAndPrecision;
+    }
+
 
     /**
      * remove start and end spaces
@@ -271,5 +382,13 @@ public class TraitSet extends BEASTObject {
      */
     public boolean isNumeric() {
         return numeric;
+    }
+
+    public void setHasPrecision(boolean hasPrecision) {
+        this.hasPrecision = hasPrecision;
+    }
+
+    public boolean hasPrecision() {
+        return hasPrecision;
     }
 } // class TraitSet

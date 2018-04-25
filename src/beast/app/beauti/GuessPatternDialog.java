@@ -1,5 +1,12 @@
 package beast.app.beauti;
 
+import beast.app.util.Utils;
+import beast.core.util.Log;
+
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.io.BufferedReader;
 import java.io.File;
@@ -7,24 +14,6 @@ import java.io.FileReader;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
-
-import javax.swing.ButtonGroup;
-import javax.swing.JButton;
-import javax.swing.JCheckBox;
-import javax.swing.JComboBox;
-import javax.swing.JDialog;
-import javax.swing.JLabel;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.JRadioButton;
-import javax.swing.JSeparator;
-import javax.swing.JTextField;
-import javax.swing.border.EmptyBorder;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
-
-import beast.app.util.Utils;
-import beast.core.util.Log;
 
 
 public class GuessPatternDialog extends JDialog {
@@ -95,7 +84,15 @@ public class GuessPatternDialog extends JDialog {
     private JSeparator separator_4;
     private JSeparator separator_5;
 
+    private JCheckBox parseDatesPrecisionCheck;
+    public boolean hasPrecision = false;
+
     public GuessPatternDialog(Component parent, String pattern) {
+        this(parent, pattern, false);
+    }
+
+    // hasPrecision to retain the checkbox selection state
+    public GuessPatternDialog(Component parent, String pattern, boolean hasPrecision) {
         m_parent = parent;
         this.pattern = pattern;
         guessPanel = new JPanel();
@@ -309,8 +306,24 @@ public class GuessPatternDialog extends JDialog {
         chckbxUnlessLessThan.setVisible(false);
         textUnlessLessThan.setVisible(false);
         textThenAdd.setVisible(false);
+
+
+        GridBagConstraints gbc_precision = new GridBagConstraints();
+        gbc_precision.fill = GridBagConstraints.HORIZONTAL;
+        gbc_precision.insets = new Insets(10, 0, 0, 0);
+        gbc_precision.gridx = 0;
+        gbc_precision.gridy = 16;
+        this.hasPrecision = hasPrecision;
+        parseDatesPrecisionCheck = new JCheckBox("Parse dates with precision", hasPrecision);
+        parseDatesPrecisionCheck.setToolTipText("date format is yyyy-MM-dd or yyyy/MM/dd");
+        parseDatesPrecisionCheck.addActionListener(e -> {this.hasPrecision=parseDatesPrecisionCheck.isSelected();});
+        guessPanel.add(parseDatesPrecisionCheck, gbc_precision);
+        parseDatesPrecisionCheck.setVisible(false);
     }
 
+    /**
+     * make all date related options visible
+     */
     public void allowAddingValues() {
         chckbxAddFixedValue.setVisible(true);
         textAddValue.setVisible(true);
@@ -319,6 +332,7 @@ public class GuessPatternDialog extends JDialog {
         chckbxUnlessLessThan.setVisible(true);
         textUnlessLessThan.setVisible(true);
         textThenAdd.setVisible(true);
+        parseDatesPrecisionCheck.setVisible(true);
     }
 
     protected void updateFields() {
